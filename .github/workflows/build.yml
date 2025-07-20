@@ -1,0 +1,28 @@
+name: Build edk2 firmware binaries
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: version tag
+        default: edk2-stable202505
+        required: true
+        type: string
+jobs:
+  build:
+    name: Build ${{ inputs.version }}
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build container
+        run: podman build -t build-container .
+      - name: Run build script
+        run: mkdir -p output && podman run --rm -v "$PWD/build":/build -v "$PWD/output":/output -w /output build-container /build "${{ inputs.version }}"
+      - name: Create release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ inputs.version }}
+          name: ${{ inputs.version }}
+          body: "created by GitHub actions run [${{ github.run_id }}](https://github.com/${{ github.repository }}/actions/runs/${{ github.run_id }})"
+          files: output/*

@@ -1,0 +1,45 @@
+#!/usr/bin/env bash
+
+set -exufo pipefail
+
+cleanup () {
+	[ -z "${tmpdir:-}" ] || rm -rf "$tmpdir"
+	tmpdir=
+}
+
+trap cleanup EXIT
+
+tag="$1"
+shift "$#"
+
+origdir="$(realpath .)"
+tmpdir="$(mktemp -d)"
+
+git clone --depth 1 --branch "$tag" --recurse-submodules https://github.com/tianocore/edk2.git "$tmpdir/edk2"
+
+export PYTHON3_ENABLE=TRUE
+
+cd "$tmpdir/edk2"
+make -C BaseTools -j "$(nproc)"
+set +u
+source edksetup.sh
+set -u
+
+export GCC_X64_PREFIX=x86_64-linux-gnu-
+export GCC_AARCH64_PREFIX=aarch64-linux-gnu-
+
+ovmf_opts=(
+	-DFD_SIZE_4MB
+	-DBUILD_SHELL=FALSE
+	-DSECURE_BOOT_ENABLE=TRUE
+	-DTPM2_ENABLE=TRUE
+	-DSMM_REQUIRE=TRUE
+)
+
+build -p OvmfPkg/OvmfPkgX64.dsc -a X64 -b RELEASE -t GCC -n "$(nproc)" "${ovmf_opts[@]}"
+build -p ArmVirtPkg/ArmVirtQemu.dsc -a AARCH64 -b RELEASE -t GCC -n "$(nproc)" "${ovmf_opts[@]}"
+
+cp Build/OvmfX64/RELEASE_GCC/FV/OVMF_CODE.fd "$origdir/edk2-qemu-x86_64-code"
+cp Build/OvmfX64/RELEASE_GCC/FV/OVMF_VARS.fd "$origdir/edk2-qemu-x86_64-vars"
+cp Build/ArmVirtQemu-AARCH64/RELEASE_GCC/FV/QEMU_EFI.fd "$origdir/edk2-qemu-aarch64-code"
+cp Build/ArmVirtQemu-AARCH64/RELEASE_GCC/FV/QEMU_VARS.fd "$origdir/edk2-qemu-aarch64-vars"
